@@ -63,17 +63,18 @@ public:
     bool IsDone(unsigned int const ip_key) const;
     int Time(unsigned int const ip_key) const;
     PING_STATUS Status(unsigned int const ip_key) const;
-    static uint32_t make_key(const char * ip_address);
     static CPinger* GetInstance();
+    int SetupDestAddr(char const * const addr_str);
 
 private:
     CPinger();
     CPinger(CPinger const&){};
     CPinger& operator=(CPinger const&){};
-
-    int SetupDestAddr(struct sockaddr_in &dest, unsigned int const ip_key) const;
-    int WriteRawSocket(struct sockaddr_in &dest, unsigned int &seq_no, unsigned int const data);
-    PING_STATUS ReadRawSocket(struct sockaddr_in &dest);
+    int SetupDestAddr(unsigned int const ip_key);
+    int WriteRawSocket(
+        unsigned int &seq_no,
+        unsigned int const data);
+    PING_STATUS ReadRawSocket();
     int PingWorkerThread();
 
     bool terminate_ = false;
@@ -82,6 +83,7 @@ private:
 
     std::thread worker_thread_;
     SOCKET raw_socket_;
+    struct sockaddr_in dest_;
     std::queue<int> queue_;
     int num_tries_;
     std::map<unsigned int, SPingStatus> status_map_;

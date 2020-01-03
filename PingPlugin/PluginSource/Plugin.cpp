@@ -7,6 +7,26 @@
 
 namespace pinger
 {
+// Are c++ exceptions always allowed in unity plugins?
+// May not need this if yes.
+// Left here to demonstrate how that can be handled. However
+// this may be not sufficient, as if exceptions are not supported
+// e.g. on android, then we still can run into problems, as the
+// code within plugin assumes that exception can be thrown (e.g.
+// in cale of out of memory error). So, if we need to support
+// platform without exceptions some parts of the plugin may need
+// to be rewritten. So far, it's fine as this plugin is supported
+// only on windows and linux and they both have exceptions support.
+#define EXCEPTIONS_ALLOWED 1
+#if EXCEPTIONS_ALLOWED 
+    #define TRY             try
+    #define CATCH(x)        catch (x)
+    #define EXCEPTION_STR   e.what()
+#else
+    #define TRY             if(1)
+    #define CATCH(x)        else if(0)
+    #define EXCEPTION_STR   "exceptions disabled"
+#endif
 
 using namespace std;
 int g_log_level = 0;
@@ -23,7 +43,7 @@ extern "C"
 EXPORT_API const char* PrintHello()
 {
     LOG(LL_NORMAL, "PrintHello called!\n");
-	return "Hello aloha, hola!";
+	return "Hello, hello!";
 }
 
 EXPORT_API unsigned int Ping(
@@ -33,16 +53,18 @@ EXPORT_API unsigned int Ping(
     unsigned int const time_to_live)
 {
     unsigned int ip_key = 0;
-    try {
+    TRY {
         CPinger *pinger = CPinger::GetInstance();
-        ip_key = CPinger::make_key(ip_address);
-        int destroy_at = time_to_live + GetTickCount(); //TODO: GetTickCount64() ??
+        ip_key = pinger->SetupDestAddr(ip_address);
+        // GetTickCount may overlap, TODO: GetTickCount64() ??
+        int destroy_at = time_to_live + GetTickCount();
         ip_key = pinger->Ping(ip_key, timeout, num_iterations, time_to_live);
     }
-    catch (std::runtime_error &e) {
-        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, e.what());
+    CATCH (std::runtime_error &e) {
+        const char *exception_str = EXCEPTION_STR;
+        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
     }
-    catch (...) {
+    CATCH(...) {
         LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
 
@@ -55,14 +77,15 @@ EXPORT_API bool PingIsDone(unsigned int const ping_handle)
 {
     if (ping_handle != 0)
     {
-        try {
+        TRY {
             CPinger *pinger = CPinger::GetInstance();
             return pinger->IsDone(ping_handle);
         }
-        catch (std::runtime_error &e) {
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, e.what());
+        CATCH (std::runtime_error &e) {
+            const char *exception_str = EXCEPTION_STR;
+            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
         }
-        catch (...) {
+        CATCH (...) {
             LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
         }
     }
@@ -76,14 +99,15 @@ EXPORT_API int PingTime(unsigned int const ping_handle)
 {
     if (ping_handle != 0)
     {
-        try {
+        TRY {
             CPinger *pinger = CPinger::GetInstance();
             return pinger->Time(ping_handle);
         }
-        catch (std::runtime_error &e) {
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, e.what());
+        CATCH (std::runtime_error &e) {
+            const char *exception_str = EXCEPTION_STR;
+            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
         }
-        catch (...) {
+        CATCH (...) {
             LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
         }
     }
@@ -100,14 +124,15 @@ EXPORT_API PING_STATUS PingStatus(unsigned int const ping_handle)
         return INVALID_HANDLE;
     }
 
-    try {
+    TRY {
         CPinger *pinger = CPinger::GetInstance();
         return pinger->Status(ping_handle);
     }
-    catch (std::runtime_error &e) {
-        LOG(LL_NORMAL, "Exception caught!:\n%s\n", e.what());
+    CATCH (std::runtime_error &e) {
+        const char *exception_str = EXCEPTION_STR;
+        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
     }
-    catch (...) {
+    CATCH (...) {
         LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
 
@@ -119,5 +144,6 @@ EXPORT_API void SetLogLevel(unsigned int const log_level)
     g_log_level = log_level;
 }
 
-}
+} // namespace
+
 } // end of export C block

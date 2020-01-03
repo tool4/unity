@@ -38,7 +38,6 @@ CPinger* CPinger::GetInstance()
     // generated (since we want to reuse already opened socket).
     if (!g_s_instance) {
         g_s_instance = new CPinger();
-
         g_s_instance->Initialize();
     }
     return g_s_instance;
@@ -80,33 +79,10 @@ PING_STATUS CPinger::Status(unsigned int const ip_key) const
     return PING_SUCCESSFUL;
 }
 
-uint32_t CPinger::make_key(const char * ip_address)
-{
-    LOG(LL_NORMAL, "%s - %s\n", __FUNCTION__, ip_address);
-    uint32_t ip_key = 0;
-    char str[32] = "";
-    strncpy(str, ip_address, 32);
-    const char* token = strtok(str, ".");
-    for (int i = 0; i < 4; i++) {
-        if (token != NULL) {
-            LOG(LL_NORMAL, "%s ", token);
-            int qt = atoi(token);
-            if (qt < 0 || qt > 255) {
-                LOG(LL_NORMAL, "Invalid address: %s\n", ip_address);
-                return 0;
-            }
-            ip_key |= qt << ((3 - i) * 8);
-            token = strtok(NULL, ".");
-        }
-    }
-    return ip_key;
-}
-
 int CPinger::Initialize()
 {
     WSADATA wsaData;
     int timeout = 100;
-    int ret;
     unsigned int addr = 0;
     struct hostent *hp = NULL;
 
@@ -125,7 +101,7 @@ int CPinger::Initialize()
         return -1;
     }
     // Set the send/recv timeout values
-    ret = setsockopt(raw_socket_, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+    int ret = setsockopt(raw_socket_, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 
     if (ret == SOCKET_ERROR) {
         LOG(LL_NORMAL, "setsockopt(SO_RCVTIMEO) failed: %d\n",
@@ -140,7 +116,9 @@ int CPinger::Initialize()
             WSAGetLastError());
         return -1;
     }
-    
+
+    memset(&dest_, 0, sizeof(dest_));
+
     return 0;
 }
 
@@ -157,18 +135,16 @@ int CPinger::PingWorkerThread()
             unsigned int seq_no = 0;
             int ip_key = queue_.front();
             queue_.pop();
-            struct sockaddr_in dest;
-            memset(&dest, 0, sizeof(dest));
 
-            SetupDestAddr(dest, ip_key);
+            SetupDestAddr(ip_key);
 
             for (int p = 0; p < num_tries_; p++) {
-                write_status = WriteRawSocket(dest, seq_no, ip_key);
-                if (write_status == sizeof(dest))
+                write_status = WriteRawSocket(seq_no, ip_key);
+                if (write_status == sizeof(dest_))
                 {
                     ++packets_sent_;
                     // todo: clean me (read status will be overwritten)
-                    read_status = ReadRawSocket(dest);
+                    read_status = ReadRawSocket();
                 }
             }
             auto it = status_map_.find(ip_key);
@@ -184,36 +160,36 @@ int CPinger::PingWorkerThread()
     return 0;
 }
 
-int CPinger::SetupDestAddr(struct sockaddr_in &dest, unsigned int const ip_key) const
+// Setups the dest_ struct based on address passed as string
+// returns ipv4 addr encoded on 32bit var
+// e.g. 0x0A00000A for 10.0.0.10 or 0 on failure
+int CPinger::SetupDestAddr(char const * const addr_str)
 {
-    char dest_str[32];
-    sprintf(dest_str, "%d.%d.%d.%d",
-        ip_key >> 24 & 0xFF,
-        ip_key >> 16 & 0xFF,
-        ip_key >> 8 & 0xFF,
-        ip_key >> 0 & 0xFF);
-
-    // Resolve the name if necessary (needed here?)
-    dest.sin_family = AF_INET;
-    if ((dest.sin_addr.s_addr = inet_addr(dest_str)) == INADDR_NONE)
+    dest_.sin_family = AF_INET;
+    if ((dest_.sin_addr.s_addr = inet_addr(addr_str)) == INADDR_NONE)
     {
         struct hostent *hp = NULL;
-        if ((hp = gethostbyname(dest_str)) != NULL)
+        if ((hp = gethostbyname(addr_str)) != NULL)
         {
-            memcpy(&(dest.sin_addr), hp->h_addr, hp->h_length);
-            dest.sin_family = hp->h_addrtype;
+            memcpy(&(dest_.sin_addr), hp->h_addr, hp->h_length);
+            dest_.sin_family = hp->h_addrtype;
         }
         else
         {
             LOG(LL_NORMAL, "gethostbyname() failed: %d\n", WSAGetLastError());
-            return -1;
+            return 0;
         }
     }
-    LOG(LL_NORMAL, "sending data: 0x%08X to %s\n", ip_key, dest_str);
-    return 0;
+    return dest_.sin_addr.S_un.S_addr;
 }
 
-int CPinger::WriteRawSocket(struct sockaddr_in &dest, unsigned int &seq_no, unsigned int const data)
+int CPinger::SetupDestAddr(unsigned int const ip_key)
+{
+    dest_.sin_addr.S_un.S_addr = ip_key;
+    return ip_key;
+}
+
+int CPinger::WriteRawSocket(unsigned int &seq_no, unsigned int const data)
 {
     ICMPPacket icmp_packet = ICMPPacket(
         GetTickCount(),
@@ -222,24 +198,26 @@ int CPinger::WriteRawSocket(struct sockaddr_in &dest, unsigned int &seq_no, unsi
         data);
 
     LOG(LL_NORMAL, "sending: %d bytes\n", sizeof(ICMPPacket));
+
     int ret = sendto(
         raw_socket_,
         (char*)(&icmp_packet),
         sizeof(ICMPPacket),
         0,
-        (struct sockaddr*)&dest,
-        sizeof(dest));
+        (struct sockaddr*)&dest_,
+        sizeof(dest_));
+
     if (ret == SOCKET_ERROR) {
         LOG(LL_NORMAL, "socket: %08X, dest: %s - sendto() failed: %d\n",
-            raw_socket_, inet_ntoa(dest.sin_addr), WSAGetLastError());
+            raw_socket_, inet_ntoa(dest_.sin_addr), WSAGetLastError());
     }
     else if (ret < sizeof(ICMPPacket)) {
-        LOG(LL_NORMAL, "%s Wrote %d/%d bytes\n", inet_ntoa(dest.sin_addr), ret, sizeof(ICMPPacket));
+        LOG(LL_NORMAL, "%s Wrote %d/%d bytes\n", inet_ntoa(dest_.sin_addr), ret, sizeof(ICMPPacket));
     }
     return ret;
 }
 
-PING_STATUS CPinger::ReadRawSocket(struct sockaddr_in &dest)
+PING_STATUS CPinger::ReadRawSocket()
 {
     struct sockaddr_in from;
     int from_len = sizeof(from);

@@ -40,6 +40,18 @@ int main(int argc, char*argv[])
             {
                 ip = "bad string";
             }
+            else if (i == 20)
+            {
+                ip = "www.google.com";
+            }
+            else if (i == 21)
+            {
+                ip = "www.unity.com";
+            }
+            else if (i == 22)
+            {
+                ip = "www.unity22.com";
+            }
 
             int handle = pinger::Ping(ip.c_str(), 1000, 41, 10000);
             while (!pinger::PingIsDone(handle))
