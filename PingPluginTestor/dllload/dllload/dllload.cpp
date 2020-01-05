@@ -19,6 +19,22 @@ int main(int argc, char*argv[])
 {
     BOOL ret = FALSE;
     HINSTANCE hinstLib = LoadLibrary(TEXT("PingPlugin.dll"));
+    bool async = true;
+    pinger::SetLogLevel(0);
+    for (int i = 1; i< argc; i++)
+    {
+        if (strcmp(argv[i], "sync") == 0)
+        {
+            printf("synchronous operation enabled\n");
+            async = false;
+        }
+        else if (strcmp(argv[i], "debug") == 0)
+        {
+            printf("debug mode enabled\n");
+            pinger::SetLogLevel(4);
+        }
+
+    }
 
     if (hinstLib != NULL)
     {
@@ -30,9 +46,11 @@ int main(int argc, char*argv[])
             printf("response from dll: [%s]\n", str);
         }
 
+        pinger::SetNumIterations(100);
+        pinger::SetTimeout(100);
+
         for (int i = 0; i < 25; i++)
         {
-            pinger::SetLogLevel(0);
             std::string ip = "192.168.0.";
             ip += std::to_string(i);
 
@@ -50,17 +68,38 @@ int main(int argc, char*argv[])
             }
             else if (i == 22)
             {
-                ip = "www.unity22.com";
+                ip = "www.not.existing.address.com";
+            }
+            else if (i == 23)
+            {
+                ip = "www.wp.pl";
             }
 
-            int handle = pinger::Ping(ip.c_str(), 1000, 41, 10000);
-            while (!pinger::PingIsDone(handle))
+            int time = 0;
+            int status = pinger::PING_SUCCESSFUL;
+
+            if (async)
             {
-                Sleep(1);
+                int handle = pinger::PingAsync(ip.c_str());
+                while (!pinger::PingIsDone(handle))
+                {
+                    Sleep(1);
+                }
+                status = pinger::PingStatus(handle);
+                time = pinger::PingTime(handle);
             }
-            if (pinger::PingStatus(handle) == pinger::PING_SUCCESSFUL)
+            else
             {
-                printf("%s is alive - ping time: %d ms\n", ip.c_str(), pinger::PingTime(handle));
+                time = pinger::PingSync(ip.c_str());
+                if (time == -1)
+                {
+                    status = pinger::DEST_UNREACHABLE;
+                }
+            }
+
+            if (status == pinger::PING_SUCCESSFUL)
+            {
+                printf("%s is alive - ping time: %d ms\n", ip.c_str(), time);
             }
             else
             {

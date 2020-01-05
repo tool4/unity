@@ -36,3 +36,8 @@
 *.suo
 *.pdb
 *.ilk
+*.opensdf
+build/
+Debug/
+Release/
+ipch/

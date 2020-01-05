@@ -21,25 +21,19 @@ class CPinger;
 
 static CPinger* g_s_instance;
 
-extern std::queue<int> queue_;
-extern int num_tries_;
-
-
 class CPinger
 {
     // TODO: compress this struct??
     struct SPingStatus
     {
         SPingStatus() :
-            SPingStatus(0, 0, 0)
+            SPingStatus(0)
         {
         }
-        SPingStatus(int num_tries_arg, int timeout_arg, int destroy_at_arg) :
+        SPingStatus(int destroy_at_arg) :
             done(0),
             status(0),
             time(0),
-            num_tries(num_tries_arg),
-            timeout(timeout_arg),
             destroy_at(destroy_at_arg)
         {
         }
@@ -55,16 +49,21 @@ class CPinger
 public:
     ~CPinger();
     int Initialize();
-    int Ping(
+    int PingAsync(
         unsigned int const ip_key,
-        unsigned int const timeout,
-        unsigned int const num_iterations,
-        unsigned int const time_to_live);
+        unsigned int const time_to_live = 10000);
     bool IsDone(unsigned int const ip_key) const;
     int Time(unsigned int const ip_key) const;
     PING_STATUS Status(unsigned int const ip_key) const;
     static CPinger* GetInstance();
     int SetupDestAddr(char const * const addr_str);
+    int SendPing(
+        unsigned int const ip_key,
+        unsigned int const seq_no,
+        unsigned int &time);
+    void SetTimeout(unsigned int const timeout);
+    void SetNumIterations(unsigned int const num_iterations);
+    unsigned int GetNumIterations() const;
 
 private:
     CPinger();
@@ -72,9 +71,9 @@ private:
     CPinger& operator=(CPinger const&){};
     int SetupDestAddr(unsigned int const ip_key);
     int WriteRawSocket(
-        unsigned int &seq_no,
+        unsigned int const seq_no,
         unsigned int const data);
-    PING_STATUS ReadRawSocket();
+    PING_STATUS ReadRawSocket(unsigned int &time);
     int PingWorkerThread();
 
     bool terminate_ = false;
@@ -85,8 +84,9 @@ private:
     SOCKET raw_socket_;
     struct sockaddr_in dest_;
     std::queue<int> queue_;
-    int num_tries_;
     std::map<unsigned int, SPingStatus> status_map_;
+    unsigned int timeout_;
+    unsigned int num_iterations_;
 
 }; // class Pinger
 

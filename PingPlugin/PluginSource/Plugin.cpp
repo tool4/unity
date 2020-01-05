@@ -7,26 +7,6 @@
 
 namespace pinger
 {
-// Are c++ exceptions always allowed in unity plugins?
-// May not need this if yes.
-// Left here to demonstrate how that can be handled. However
-// this may be not sufficient, as if exceptions are not supported
-// e.g. on android, then we still can run into problems, as the
-// code within plugin assumes that exception can be thrown (e.g.
-// in cale of out of memory error). So, if we need to support
-// platform without exceptions some parts of the plugin may need
-// to be rewritten. So far, it's fine as this plugin is supported
-// only on windows and linux and they both have exceptions support.
-#define EXCEPTIONS_ALLOWED 1
-#if EXCEPTIONS_ALLOWED 
-    #define TRY             try
-    #define CATCH(x)        catch (x)
-    #define EXCEPTION_STR   e.what()
-#else
-    #define TRY             if(1)
-    #define CATCH(x)        else if(0)
-    #define EXCEPTION_STR   "exceptions disabled"
-#endif
 
 using namespace std;
 int g_log_level = 0;
@@ -46,29 +26,43 @@ EXPORT_API const char* PrintHello()
 	return "Hello, hello!";
 }
 
-EXPORT_API unsigned int Ping(
-    char const * const ip_address,
-    unsigned int const timeout,
-    unsigned int const num_iterations,
-    unsigned int const time_to_live)
+EXPORT_API unsigned int PingSync(char const * const ip_address)
 {
     unsigned int ip_key = 0;
-    TRY {
-        CPinger *pinger = CPinger::GetInstance();
-        ip_key = pinger->SetupDestAddr(ip_address);
-        // GetTickCount may overlap, TODO: GetTickCount64() ??
-        int destroy_at = time_to_live + GetTickCount();
-        ip_key = pinger->Ping(ip_key, timeout, num_iterations, time_to_live);
-    }
-    CATCH (std::runtime_error &e) {
-        const char *exception_str = EXCEPTION_STR;
-        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
-    }
-    CATCH(...) {
-        LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
-    }
+    unsigned int ret_value = 0;
+    CPinger *pinger = CPinger::GetInstance();
+    ip_key = pinger->SetupDestAddr(ip_address);
 
-    return ip_key;
+    unsigned int total_time = 0;
+    unsigned int num_iterations = pinger->GetNumIterations();
+
+    for (unsigned int i = 0; i < num_iterations; i++)
+    {
+        unsigned int time = 0;
+        ret_value = pinger->SendPing(ip_key, i, time);
+        total_time += time;
+    }
+    if (ret_value == PING_SUCCESSFUL)
+    {
+        return total_time / num_iterations;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+
+EXPORT_API unsigned int PingAsync(char const * const ip_address)
+{
+    unsigned int ip_key = 0;
+    unsigned int ret_value = 0;
+    CPinger *pinger = CPinger::GetInstance();
+    ip_key = pinger->SetupDestAddr(ip_address);
+
+    ret_value = pinger->PingAsync(ip_key);
+
+    return ret_value;
 }
 
 // Returns true if given ping request has completed.
@@ -77,17 +71,8 @@ EXPORT_API bool PingIsDone(unsigned int const ping_handle)
 {
     if (ping_handle != 0)
     {
-        TRY {
-            CPinger *pinger = CPinger::GetInstance();
-            return pinger->IsDone(ping_handle);
-        }
-        CATCH (std::runtime_error &e) {
-            const char *exception_str = EXCEPTION_STR;
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
-        }
-        CATCH (...) {
-            LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
-        }
+        CPinger *pinger = CPinger::GetInstance();
+        return pinger->IsDone(ping_handle);
     }
 
     return true;
@@ -99,17 +84,8 @@ EXPORT_API int PingTime(unsigned int const ping_handle)
 {
     if (ping_handle != 0)
     {
-        TRY {
-            CPinger *pinger = CPinger::GetInstance();
-            return pinger->Time(ping_handle);
-        }
-        CATCH (std::runtime_error &e) {
-            const char *exception_str = EXCEPTION_STR;
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
-        }
-        CATCH (...) {
-            LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
-        }
+        CPinger *pinger = CPinger::GetInstance();
+        return pinger->Time(ping_handle);
     }
 
     return -1;
@@ -124,24 +100,25 @@ EXPORT_API PING_STATUS PingStatus(unsigned int const ping_handle)
         return INVALID_HANDLE;
     }
 
-    TRY {
-        CPinger *pinger = CPinger::GetInstance();
-        return pinger->Status(ping_handle);
-    }
-    CATCH (std::runtime_error &e) {
-        const char *exception_str = EXCEPTION_STR;
-        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n", __FUNCTION__, exception_str);
-    }
-    CATCH (...) {
-        LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
-    }
-
-    return INVALID_STATUS;
+    CPinger *pinger = CPinger::GetInstance();
+    return pinger->Status(ping_handle);
 }
 
 EXPORT_API void SetLogLevel(unsigned int const log_level)
 {
     g_log_level = log_level;
+}
+
+EXPORT_API void SetTimeout(unsigned int const timeout)
+{
+    CPinger *pinger = CPinger::GetInstance();
+    pinger->SetTimeout(timeout);
+}
+
+EXPORT_API void SetNumIterations(unsigned int const num_iterations)
+{
+    CPinger *pinger = CPinger::GetInstance();
+    pinger->SetNumIterations(num_iterations);
 }
 
 } // namespace
