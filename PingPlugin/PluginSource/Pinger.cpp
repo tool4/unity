@@ -6,45 +6,18 @@
 #include "PingPluginAPI.h"
 #include <thread>
 #include <string.h>
+
+#ifdef WIN32
+// Need to link with Ws2_32.lib
+#pragma comment (lib, "Ws2_32.lib")
+#pragma warning(disable:4996)
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#ifdef WIN32
-// TODO: clean this up! (remove?)
-// Need to link with Ws2_32.lib, Mswsock.lib, and Advapi32.lib
-#pragma comment (lib, "Ws2_32.lib")
-#pragma comment (lib, "Mswsock.lib")
-#pragma comment (lib, "AdvApi32.lib")
-#pragma warning(disable:4996)
-#else
 #include <sys/types.h>
 #include <unistd.h>
 #include <netdb.h>
-
-// TODO: move to class, or header file
-inline unsigned int GetLastError()
-{
-#ifdef WIN32
-    return WSAGetLastError();
-#elif __linux__
-    return errno;
-#else
-    static_assert(0, "Unsupported platform");
-#endif
-}
-
-inline unsigned int GetTickCount()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-inline unsigned int GetCurrentProcessId()
-{
-    return static_cast<unsigned int>(getpid());
-}
 #endif
 
 using namespace icmp;
@@ -90,12 +63,10 @@ CPinger* CPinger::GetInstance()
     return g_s_instance;
 }
 
-int CPinger::PingAsync(
-    unsigned int const ip_key,
-    unsigned int const time_to_live)
+int CPinger::PingAsync(unsigned int const ip_key)
 {
     queue_.push(ip_key);
-    status_map_[ip_key] = SPingStatus(time_to_live);
+    status_map_[ip_key] = SPingStatus();
     return ip_key;
 }
 

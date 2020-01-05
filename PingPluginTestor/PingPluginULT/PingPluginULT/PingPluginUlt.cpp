@@ -1,10 +1,7 @@
 // unit test program for pingplugin dll/so
 
 #ifdef WIN32
-#include "stdafx.h"
-#include <windows.h> 
-typedef char* (__cdecl *HELLOPROC)();
-typedef bool(__cdecl *PINGPROC)(int, int, int, int);
+#include <windows.h>
 #else
 #include <unistd.h>
 inline void Sleep(unsigned int miliseconds)
@@ -38,17 +35,17 @@ int main(int argc, char*argv[])
             pinger::SetLogLevel(4);
         }
         else if (argc > (i + 1) &&
-		 strcmp(argv[i], "-num_iter") == 0)
+                 strcmp(argv[i], "-num_iter") == 0)
         {
             num_iterations = atoi(argv[i+1]);
-	    ++i;
+            ++i;
             printf("num iterations set to %d\n", num_iterations);
         }
         else if (argc > (i + 1) &&
-		 strcmp(argv[i], "-timeout") == 0)
+                 strcmp(argv[i], "-timeout") == 0)
         {
             timeout = atoi(argv[i+1]);
-	    ++i;
+            ++i;
             printf("timeout set to %d\n", num_iterations);
         }
     }

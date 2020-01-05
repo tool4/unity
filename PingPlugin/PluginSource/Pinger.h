@@ -13,53 +13,69 @@
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#else
+#elif __linux__
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "PingPluginAPI.h"
-
 #define INVALID_SOCKET  (~0)
 #define SOCKET_ERROR    (-1)
+namespace pinger
+{
+
+inline unsigned int GetTickCount()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+inline unsigned int GetCurrentProcessId()
+{
+    return static_cast<unsigned int>(getpid());
+}
+
+} //namespace
+#else
+static_assert(0, "Unsupported platform");
 #endif
 
 namespace pinger
 {
+
+inline unsigned int GetLastError()
+{
+#ifdef WIN32
+    return WSAGetLastError();
+#elif __linux__
+    return errno;
+#else
+    static_assert(0, "Unsupported platform");
+#endif
+}
 
 enum PING_STATUS;
 class CPinger;
 
 class CPinger
 {
-    // TODO: compress this struct??
     struct SPingStatus
     {
         SPingStatus() :
-            SPingStatus(0)
-        {
-        }
-        SPingStatus(int destroy_at_arg) :
             done(0),
             status(0),
-            time(0),
-            destroy_at(destroy_at_arg)
+            time(0)
         {
         }
-
         int done;
         int status;
         int time;
-        int num_tries;
-        int timeout;
-        int destroy_at;
     };
 
 public:
     ~CPinger();
     int Initialize();
-    int PingAsync(
-        unsigned int const ip_key,
-        unsigned int const time_to_live = 10000);
+    int PingAsync(unsigned int const ip_key);
     bool IsDone(unsigned int const ip_key) const;
     int Time(unsigned int const ip_key);
     PING_STATUS Status(unsigned int const ip_key) const;
