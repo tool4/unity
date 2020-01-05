@@ -5,6 +5,10 @@
 #include "ICMP.h"
 #include "PingPluginAPI.h"
 #include <thread>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifdef WIN32
 // TODO: clean this up! (remove?)
@@ -14,18 +18,45 @@
 #pragma comment (lib, "AdvApi32.lib")
 #pragma warning(disable:4996)
 #else
-#define WSAGetLastError() "[TODO: error code logs on linux]"
+#include <sys/types.h>
+#include <unistd.h>
+#include <netdb.h>
+
+// TODO: move to class, or header file
+inline unsigned int GetLastError()
+{
+#ifdef WIN32
+    return WSAGetLastError();
+#elif __linux__
+    return errno;
+#else
+    static_assert(0, "Unsupported platform");
+#endif
+}
+
+inline unsigned int GetTickCount()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+inline unsigned int GetCurrentProcessId()
+{
+    return static_cast<unsigned int>(getpid());
+}
 #endif
 
 using namespace icmp;
 namespace pinger
 {
+static CPinger* g_s_instance;
 
 CPinger::CPinger() :
     packets_received_(0),
     packets_sent_(0),
-    raw_socket_(INVALID_SOCKET),
     worker_thread_([=] { PingWorkerThread(); }),
+    raw_socket_(INVALID_SOCKET),
     timeout_(1000),
     num_iterations_(4)
 {
@@ -78,12 +109,14 @@ bool CPinger::IsDone(unsigned int const ip_key) const
     return true;
 }
 
-int CPinger::Time(unsigned int const ip_key) const
+int CPinger::Time(unsigned int const ip_key)
 {
     auto it = status_map_.find(ip_key);
     if (it != status_map_.end())
     {
-        return it->second.time;
+        unsigned int time = it->second.time;
+        status_map_.erase(it);
+        return time;
     }
     return -1;
 }
@@ -100,9 +133,6 @@ PING_STATUS CPinger::Status(unsigned int const ip_key) const
 
 int CPinger::Initialize()
 {
-    int timeout = 100;
-    unsigned int addr = 0;
-    struct hostent *hp = NULL;
 #ifdef WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
@@ -110,29 +140,46 @@ int CPinger::Initialize()
         LOG(LL_NORMAL, "WSAStartup() failed: %d\n", GetLastError());
         return -1;
     }
+    unsigned int timeout = timeout_;
+#else
+    struct timeval timeout =
+    {
+        static_cast<long int>(timeout_) / 1000,
+	(static_cast<long int>(timeout_) % 1000) * 1000
+    };
 #endif
     raw_socket_ = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (raw_socket_ == INVALID_SOCKET) {
-        LOG(LL_NORMAL, "WSASocket() failed: %d\n", WSAGetLastError());
+        LOG(LL_NORMAL, "WSASocket() failed: %d\n", GetLastError());
         // This may fail if process has no super user rights
         // Fallback to TCP connection to workaround this?
         return -1;
     }
 
     // Set the recv timeout value
-    int ret = setsockopt(raw_socket_, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+    int ret = setsockopt(
+	          raw_socket_,
+	          SOL_SOCKET,
+                  SO_RCVTIMEO,
+                  reinterpret_cast<char*>(&timeout_),
+		  sizeof(timeout));
+
     if (ret == SOCKET_ERROR) {
-        LOG(LL_NORMAL, "setsockopt(SO_RCVTIMEO) failed: %d\n",
-            WSAGetLastError());
+        LOG(LL_NORMAL, "setsockopt(SO_RCVTIMEO) failed: %d\n", GetLastError());
         return -1;
     }
 
     // Set the send timeout value
-    ret = setsockopt(raw_socket_, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout));
+    ret = setsockopt(
+              raw_socket_,
+              SOL_SOCKET,
+              SO_SNDTIMEO,
+              reinterpret_cast<char*>(&timeout_),
+              sizeof(timeout_));
+
     if (ret == SOCKET_ERROR) {
-        LOG(LL_NORMAL, "setsockopt(SO_SNDTIMEO) failed: %d\n",
-            WSAGetLastError());
+        LOG(LL_NORMAL, "setsockopt(SO_SNDTIMEO) failed: %d\n", GetLastError());
         return -1;
     }
 
@@ -206,20 +253,26 @@ int CPinger::SetupDestAddr(char const * const addr_str)
         }
         else
         {
-            LOG(LL_NORMAL, "gethostbyname() failed: %d\n", WSAGetLastError());
+            LOG(LL_NORMAL, "gethostbyname() failed: %d\n", GetLastError());
             return 0;
         }
     }
-    return dest_.sin_addr.S_un.S_addr;
+    //#ifdef WIN32
+    //return dest_.sin_addr.S_un.S_addr;
+    //#else
+    return dest_.sin_addr.s_addr;
+    //#endif
 }
 
 int CPinger::SetupDestAddr(unsigned int const ip_key)
 {
-    dest_.sin_addr.S_un.S_addr = ip_key;
+    dest_.sin_addr.s_addr = ip_key;
     return ip_key;
 }
 
-int CPinger::WriteRawSocket(unsigned int const seq_no, unsigned int const data)
+int CPinger::WriteRawSocket(
+    unsigned int const seq_no,
+    unsigned int const data)
 {
     ICMPPacket icmp_packet = ICMPPacket(
         GetTickCount(),
@@ -238,11 +291,14 @@ int CPinger::WriteRawSocket(unsigned int const seq_no, unsigned int const data)
         sizeof(dest_));
 
     if (ret == SOCKET_ERROR) {
-        LOG(LL_NORMAL, "socket: %08X, dest: %s - sendto() failed: %d\n",
-            raw_socket_, inet_ntoa(dest_.sin_addr), WSAGetLastError());
+        LOG(LL_NORMAL,
+	    "socket: %08X, dest: %s - sendto() failed, error code: %d\n",
+            raw_socket_, inet_ntoa(dest_.sin_addr), GetLastError());
     }
-    else if (ret < sizeof(ICMPPacket)) {
-        LOG(LL_NORMAL, "%s Wrote %d/%d bytes\n", inet_ntoa(dest_.sin_addr), ret, sizeof(ICMPPacket));
+    else if (ret < static_cast<int>(sizeof(ICMPPacket))) {
+        LOG(LL_NORMAL,
+	    "%s Wrote %d/%d bytes\n",
+	    inet_ntoa(dest_.sin_addr), ret, sizeof(ICMPPacket));
     }
     return ret;
 }
@@ -260,14 +316,17 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
         sizeof(buf),
         0,
         (struct sockaddr*)&from,
-        &from_len);
+        (socklen_t*)&from_len);
 
     if (ret_value == SOCKET_ERROR) {
-        if (WSAGetLastError() == WSAETIMEDOUT) {
+#ifdef WIN32
+        if (GetLastError() == WSAETIMEDOUT){
             LOG(LL_NORMAL, "%s timed out\n", inet_ntoa(from.sin_addr));
             return PING_TIMEOUT;
         }
-        LOG(LL_NORMAL, "%s - got SOCKET_ERROR on receive\n", inet_ntoa(from.sin_addr));
+#endif
+        LOG(LL_NORMAL, "recvfrom %s - SOCKET_ERROR, error code: %d./bui\n",
+	    inet_ntoa(from.sin_addr), GetLastError());
         return DEST_UNREACHABLE;
     }
 
@@ -275,7 +334,8 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
     ++packets_received_;
     uint32_t data = 0xDEADBEEF;
     IPHeader *iphdr = reinterpret_cast<IPHeader *>(buf);
-    ICMPPacket *icmp_pkt = reinterpret_cast<ICMPPacket *>(buf + iphdr->h_len * sizeof(uint32_t));
+    ICMPPacket *icmp_pkt = reinterpret_cast<ICMPPacket *>(
+	buf + iphdr->h_len * sizeof(uint32_t));
 
     if (icmp_pkt->header.i_type == ICMP_ECHOREPLY) {
         if (icmp_pkt->header.i_id != (uint16_t)GetCurrentProcessId()) {
@@ -284,7 +344,8 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
         }
         else {
             time = tick - icmp_pkt->timestamp;
-            LOG(LL_NORMAL, "received %3d bytes from %12s: icmp_seq = %d. time: %d ms\n",
+            LOG(LL_NORMAL, "received %3d bytes from %12s:"
+		" icmp_seq = %d. time: %d ms\n",
                 ret_value,
                 inet_ntoa(from.sin_addr),
                 icmp_pkt->header.i_seq,
@@ -294,11 +355,7 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
     }
     else {
         if (icmp_pkt->header.i_type == 3) {
-            LOG(LL_NORMAL, "%d.%d.%d.%d - destination host Unreachable (data: 0x%08X from: %08X)\n",
-                data >> 0 & 0xFF,
-                data >> 8 & 0xFF,
-                data >> 16 & 0xFF,
-                data >> 24 & 0xFF,
+            LOG(LL_NORMAL, "%08X Destination unreachable (from: %08X)\n",
                 data,
                 from.sin_addr);
             return DEST_UNREACHABLE;

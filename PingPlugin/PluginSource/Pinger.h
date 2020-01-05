@@ -29,8 +29,6 @@ namespace pinger
 enum PING_STATUS;
 class CPinger;
 
-static CPinger* g_s_instance;
-
 class CPinger
 {
     // TODO: compress this struct??
@@ -63,7 +61,7 @@ public:
         unsigned int const ip_key,
         unsigned int const time_to_live = 10000);
     bool IsDone(unsigned int const ip_key) const;
-    int Time(unsigned int const ip_key) const;
+    int Time(unsigned int const ip_key);
     PING_STATUS Status(unsigned int const ip_key) const;
     static CPinger* GetInstance();
     int SetupDestAddr(char const * const addr_str);
@@ -77,8 +75,8 @@ public:
 
 private:
     CPinger();
-    CPinger(CPinger const&){};
-    CPinger& operator=(CPinger const&){};
+    CPinger(CPinger const&) = delete;
+    CPinger& operator=(CPinger const&) = delete;
     int SetupDestAddr(unsigned int const ip_key);
     int WriteRawSocket(
         unsigned int const seq_no,

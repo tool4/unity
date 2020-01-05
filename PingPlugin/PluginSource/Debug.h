@@ -5,14 +5,13 @@
 #define UNITY_PING_PLUGIN_DEBUG_H_FILE
 
 #if _MSC_VER
-#include <stdio.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#else
-#define LOG
 #endif
 
 #include "assert.h"
+#include <stdio.h>
+#include <stdarg.h>
 
 namespace pinger
 {
@@ -33,7 +32,6 @@ enum LOG_LEVEL
     LL_VERBOSE,
 };
 
-#if _MSC_VER
 //TODO; make it non inline?
 inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
 {
@@ -44,16 +42,15 @@ inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
 #if _MSC_VER
         int len = _vscprintf(fmt, args) + 1;
 #else
-        int len = vsnprintf(NULL, 0, fmt, args);
+        int len = vsnprintf(NULL, 0, fmt, args) + 1;
 #endif
         va_end(args);
 
         char* str = new char[len];
         if (str) {
             va_start(args, fmt);
-            vsprintf_s(str, len, fmt, args);
-            va_end(args);
 #if _MSC_VER
+            vsprintf_s(str, len, fmt, args);
             // Get a handle to the console output device.
             void* console = CreateFileW(L"CONOUT$",
                 GENERIC_WRITE,
@@ -67,13 +64,14 @@ inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
                 WriteConsoleA(console, str, len, &bytes_written, NULL);
             }
 #else
+	    vsnprintf(str, len, fmt, args);
             printf("%s", str);
 #endif
+            va_end(args);
             delete[] str;
         }
     }
 }
-#endif // _MSC_VER
 
 
 // Are c++ exceptions always allowed in unity plugins?

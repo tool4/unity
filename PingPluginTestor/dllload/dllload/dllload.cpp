@@ -1,24 +1,28 @@
-// dllload.cpp : Defines the entry point for the console application.
-//
+// unit test program for pingplugin dll/so
 
+#ifdef WIN32
 #include "stdafx.h"
-
-// A simple program that uses LoadLibrary and 
-// GetProcAddress to access myPuts from Myputs.dll. 
-// as well as direct calls to statically linked library
-
-#include "../../../PingPlugin/PluginSource/PingPluginAPI.h"
-#include <stdio.h> 
-#include <string> 
 #include <windows.h> 
-
 typedef char* (__cdecl *HELLOPROC)();
 typedef bool(__cdecl *PINGPROC)(int, int, int, int);
+#else
+#include <unistd.h>
+inline void Sleep(unsigned int miliseconds)
+{
+    usleep(miliseconds * 1000);
+}
+#endif
+
+#include "../../../PingPlugin/PluginSource/PingPluginAPI.h"
+#include <stdio.h>
+#include <string.h>
+#include <string>
 
 int main(int argc, char*argv[])
 {
-    BOOL ret = FALSE;
-    HINSTANCE hinstLib = LoadLibrary(TEXT("PingPlugin.dll"));
+    int ret = 0;
+    int num_iterations = 1;
+    int timeout = 1000;
     bool async = true;
     pinger::SetLogLevel(0);
     for (int i = 1; i< argc; i++)
@@ -33,21 +37,25 @@ int main(int argc, char*argv[])
             printf("debug mode enabled\n");
             pinger::SetLogLevel(4);
         }
-
+        else if (argc > (i + 1) &&
+		 strcmp(argv[i], "-num_iter") == 0)
+        {
+            num_iterations = atoi(argv[i+1]);
+	    ++i;
+            printf("num iterations set to %d\n", num_iterations);
+        }
+        else if (argc > (i + 1) &&
+		 strcmp(argv[i], "-timeout") == 0)
+        {
+            timeout = atoi(argv[i+1]);
+	    ++i;
+            printf("timeout set to %d\n", num_iterations);
+        }
     }
 
-    if (hinstLib != NULL)
     {
-        HELLOPROC hello_proc = (HELLOPROC)GetProcAddress(hinstLib, "PrintHello");
-        // If the function address is valid, call the function.
-        if (NULL != hello_proc) {
-            ret = TRUE;
-            char* str = (hello_proc)();
-            printf("response from dll: [%s]\n", str);
-        }
-
-        pinger::SetNumIterations(100);
-        pinger::SetTimeout(100);
+        pinger::SetNumIterations(num_iterations);
+        pinger::SetTimeout(timeout);
 
         for (int i = 0; i < 25; i++)
         {
@@ -106,9 +114,7 @@ int main(int argc, char*argv[])
                 printf("%s is not reachable\n", ip.c_str());
             }
         }
-        ret = FreeLibrary(hinstLib);
     }
 
     return ret;
-
 }

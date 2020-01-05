@@ -20,12 +20,6 @@ extern "C"
 
 // The functions we will call from Unity.
 
-EXPORT_API const char* PrintHello()
-{
-    LOG(LL_NORMAL, "PrintHello called!\n");
-	return "Hello, hello!";
-}
-
 EXPORT_API unsigned int PingSync(char const * const ip_address)
 {
     unsigned int ip_key = 0;

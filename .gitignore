@@ -37,6 +37,12 @@
 *.pdb
 *.ilk
 *.opensdf
+*.debug
+*#*
+*~
+ping_plugin_ult
+
+# dirs
 build/
 Debug/
 Release/
