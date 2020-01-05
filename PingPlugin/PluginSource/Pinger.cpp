@@ -6,12 +6,16 @@
 #include "PingPluginAPI.h"
 #include <thread>
 
+#ifdef WIN32
 // TODO: clean this up! (remove?)
 // Need to link with Ws2_32.lib, Mswsock.lib, and Advapi32.lib
 #pragma comment (lib, "Ws2_32.lib")
 #pragma comment (lib, "Mswsock.lib")
 #pragma comment (lib, "AdvApi32.lib")
 #pragma warning(disable:4996)
+#else
+#define WSAGetLastError() "[TODO: error code logs on linux]"
+#endif
 
 using namespace icmp;
 namespace pinger
@@ -96,17 +100,17 @@ PING_STATUS CPinger::Status(unsigned int const ip_key) const
 
 int CPinger::Initialize()
 {
-    WSADATA wsaData;
     int timeout = 100;
     unsigned int addr = 0;
     struct hostent *hp = NULL;
-
+#ifdef WIN32
+    WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
         LOG(LL_NORMAL, "WSAStartup() failed: %d\n", GetLastError());
         return -1;
     }
-
+#endif
     raw_socket_ = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (raw_socket_ == INVALID_SOCKET) {

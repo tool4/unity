@@ -4,14 +4,24 @@
 #ifndef UNITY_PINGPLUGIN_PING_H_FILE
 #define UNITY_PINGPLUGIN_PING_H_FILE
 
-#include "debug.h"
-
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <map>
 #include <queue>
 #include <thread>
+#include "Debug.h"
+
+#ifdef WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include "PingPluginAPI.h"
+
+#define INVALID_SOCKET  (~0)
+#define SOCKET_ERROR    (-1)
+#endif
 
 namespace pinger
 {
@@ -81,7 +91,7 @@ private:
     unsigned int packets_sent_;
 
     std::thread worker_thread_;
-    SOCKET raw_socket_;
+    int raw_socket_;
     struct sockaddr_in dest_;
     std::queue<int> queue_;
     std::map<unsigned int, SPingStatus> status_map_;
