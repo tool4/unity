@@ -14,15 +14,15 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #elif __linux__
+#include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <unistd.h>
 #include "PingPluginAPI.h"
 #define INVALID_SOCKET  (~0)
 #define SOCKET_ERROR    (-1)
 namespace pinger
 {
-
 inline unsigned int GetTickCount()
 {
     struct timespec ts;
@@ -38,7 +38,7 @@ inline unsigned int GetCurrentProcessId()
 } //namespace
 #else
 static_assert(0, "Unsupported platform");
-#endif
+#endif // WIN32/__linux__
 
 namespace pinger
 {

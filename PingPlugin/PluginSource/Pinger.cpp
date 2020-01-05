@@ -16,7 +16,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <netdb.h>
 #endif
 
@@ -133,7 +132,7 @@ int CPinger::Initialize()
 	          raw_socket_,
 	          SOL_SOCKET,
                   SO_RCVTIMEO,
-                  reinterpret_cast<char*>(&timeout_),
+                  reinterpret_cast<char*>(&timeout),
 		  sizeof(timeout));
 
     if (ret == SOCKET_ERROR) {
@@ -146,8 +145,8 @@ int CPinger::Initialize()
               raw_socket_,
               SOL_SOCKET,
               SO_SNDTIMEO,
-              reinterpret_cast<char*>(&timeout_),
-              sizeof(timeout_));
+              reinterpret_cast<char*>(&timeout),
+              sizeof(timeout));
 
     if (ret == SOCKET_ERROR) {
         LOG(LL_NORMAL, "setsockopt(SO_SNDTIMEO) failed: %d\n", GetLastError());
@@ -175,35 +174,44 @@ int CPinger::SendPing(
 
 int CPinger::PingWorkerThread()
 {
-    LOG(LL_NORMAL, "%s has started\n", __FUNCTION__);
-
-    while (!terminate_)
-    {
-        while (!queue_.empty())
+    TRY {
+        LOG(LL_NORMAL, "%s has started\n", __FUNCTION__);
+        while (!terminate_)
         {
-            int ret_value = 0;
-            unsigned int seq_no = 0;
-            unsigned int total_time = 0;
-            int ip_key = queue_.front();
-            queue_.pop();
-
-            SetupDestAddr(ip_key);
-
-            for (unsigned int p = 0; p < num_iterations_; p++) {
-                unsigned int time = 0;
-                ret_value = SendPing(ip_key, seq_no, time);
-                total_time += time;
-                seq_no++;
-            }
-            auto it = status_map_.find(ip_key);
-            if (it != status_map_.end())
+            while (!queue_.empty())
             {
-                it->second.done = true;
-                it->second.status = ret_value;
-                it->second.time = total_time / num_iterations_;
+                int ret_value = 0;
+                unsigned int seq_no = 0;
+                unsigned int total_time = 0;
+                int ip_key = queue_.front();
+                queue_.pop();
+
+                SetupDestAddr(ip_key);
+
+                for (unsigned int p = 0; p < num_iterations_; p++) {
+                    unsigned int time = 0;
+                    ret_value = SendPing(ip_key, seq_no, time);
+                    total_time += time;
+                    seq_no++;
+                }
+                auto it = status_map_.find(ip_key);
+                if (it != status_map_.end())
+                {
+                    it->second.done = true;
+                    it->second.status = ret_value;
+                    it->second.time = total_time / num_iterations_;
+                }
             }
+            std::this_thread::yield();
         }
-        std::this_thread::yield();
+    }
+    CATCH(std::runtime_error &e) {
+            const char *exception_str = EXCEPTION_STR;
+            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
+                __FUNCTION__, exception_str);
+    }
+    CATCH(...) {
+        LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
     return 0;
 }
@@ -228,11 +236,7 @@ int CPinger::SetupDestAddr(char const * const addr_str)
             return 0;
         }
     }
-    //#ifdef WIN32
-    //return dest_.sin_addr.S_un.S_addr;
-    //#else
     return dest_.sin_addr.s_addr;
-    //#endif
 }
 
 int CPinger::SetupDestAddr(unsigned int const ip_key)
@@ -296,7 +300,7 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
             return PING_TIMEOUT;
         }
 #endif
-        LOG(LL_NORMAL, "recvfrom %s - SOCKET_ERROR, error code: %d./bui\n",
+        LOG(LL_NORMAL, "recvfrom %s - SOCKET_ERROR, error code: %d\n",
 	    inet_ntoa(from.sin_addr), GetLastError());
         return DEST_UNREACHABLE;
     }
