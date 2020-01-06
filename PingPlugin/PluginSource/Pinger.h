@@ -1,8 +1,8 @@
 // Author: tomasz.olejniczak@gmail.com
 // All rights reserved.
 
-#ifndef UNITY_PINGPLUGIN_PING_H_FILE
-#define UNITY_PINGPLUGIN_PING_H_FILE
+#ifndef UNITY_PINGPLUGIN_PINGER_H_FILE
+#define UNITY_PINGPLUGIN_PINGER_H_FILE
 
 #include <map>
 #include <queue>
@@ -74,12 +74,15 @@ class CPinger
 
 public:
     ~CPinger();
+
+    static CPinger* GetInstance();
+    static void RemoveInstance();
+
     int Initialize();
     int PingAsync(unsigned int const ip_key);
     bool IsDone(unsigned int const ip_key) const;
     int Time(unsigned int const ip_key);
     PING_STATUS Status(unsigned int const ip_key) const;
-    static CPinger* GetInstance();
     int SetupDestAddr(char const * const addr_str);
     int SendPing(
         unsigned int const ip_key,
@@ -99,11 +102,9 @@ private:
         unsigned int const data);
     PING_STATUS ReadRawSocket(unsigned int &time);
     int PingWorkerThread();
+    int UpdateTimeouts();
 
     bool terminate_ = false;
-    unsigned int packets_received_;
-    unsigned int packets_sent_;
-
     std::thread worker_thread_;
     int raw_socket_;
     struct sockaddr_in dest_;
@@ -116,4 +117,4 @@ private:
 
 }
 
-#endif // UNITY_PINGPLUGIN_PING_H_FILE
+#endif // UNITY_PINGPLUGIN_PINGER_H_FILE

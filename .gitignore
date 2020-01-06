@@ -40,6 +40,7 @@
 *.debug
 *#*
 *~
+*.exp
 ping_plugin_ult
 
 # dirs

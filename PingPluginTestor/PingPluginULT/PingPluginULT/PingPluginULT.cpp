@@ -20,8 +20,9 @@ int main(int argc, char*argv[])
     int ret = 0;
     int num_iterations = 1;
     int timeout = 1000;
+    int log_level = 0;
     bool async = true;
-    pinger::SetLogLevel(0);
+
     for (int i = 1; i< argc; i++)
     {
         if (strcmp(argv[i], "sync") == 0)
@@ -32,7 +33,7 @@ int main(int argc, char*argv[])
         else if (strcmp(argv[i], "debug") == 0)
         {
             printf("debug mode enabled\n");
-            pinger::SetLogLevel(4);
+            log_level = 4;
         }
         else if (argc > (i + 1) &&
                  strcmp(argv[i], "-num_iter") == 0)
@@ -50,66 +51,65 @@ int main(int argc, char*argv[])
         }
     }
 
+    pinger::SetLogLevel(log_level);
+    pinger::SetNumIterations(num_iterations);
+    pinger::SetTimeout(timeout);
+
+    for (int i = 0; i < 25; i++)
     {
-        pinger::SetNumIterations(num_iterations);
-        pinger::SetTimeout(timeout);
+        std::string ip = "192.168.0.";
+        ip += std::to_string(i);
 
-        for (int i = 0; i < 25; i++)
+        if (i == 19)
         {
-            std::string ip = "192.168.0.";
-            ip += std::to_string(i);
+            ip = "bad string";
+        }
+        else if (i == 20)
+        {
+            ip = "www.google.com";
+        }
+        else if (i == 21)
+        {
+            ip = "www.unity.com";
+        }
+        else if (i == 22)
+        {
+            ip = "www.not.existing.address.com";
+        }
+        else if (i == 23)
+        {
+            ip = "www.wp.pl";
+        }
 
-            if (i == 19)
-            {
-                ip = "bad string";
-            }
-            else if (i == 20)
-            {
-                ip = "www.google.com";
-            }
-            else if (i == 21)
-            {
-                ip = "www.unity.com";
-            }
-            else if (i == 22)
-            {
-                ip = "www.not.existing.address.com";
-            }
-            else if (i == 23)
-            {
-                ip = "www.wp.pl";
-            }
+        int time = 0;
+        int status = pinger::PING_SUCCESSFUL;
 
-            int time = 0;
-            int status = pinger::PING_SUCCESSFUL;
+        if (async)
+        {
+            int handle = pinger::PingAsync(ip.c_str());
+            while (!pinger::PingIsDone(handle))
+            {
+                Sleep(1);
+            }
+            status = pinger::PingStatus(handle);
+            time = pinger::PingTime(handle);
+        }
+        else
+        {
+            time = pinger::PingSync(ip.c_str());
+            if (time == -1)
+            {
+                status = pinger::DEST_UNREACHABLE;
+            }
+        }
 
-            if (async)
-            {
-                int handle = pinger::PingAsync(ip.c_str());
-                while (!pinger::PingIsDone(handle))
-                {
-                    Sleep(1);
-                }
-                status = pinger::PingStatus(handle);
-                time = pinger::PingTime(handle);
-            }
-            else
-            {
-                time = pinger::PingSync(ip.c_str());
-                if (time == -1)
-                {
-                    status = pinger::DEST_UNREACHABLE;
-                }
-            }
-
-            if (status == pinger::PING_SUCCESSFUL)
-            {
-                printf("%s is alive - ping time: %d ms\n", ip.c_str(), time);
-            }
-            else
-            {
-                printf("%s is not reachable\n", ip.c_str());
-            }
+        if (status == pinger::PING_SUCCESSFUL)
+        {
+            printf("%s is alive - ping time: %d ms\n", ip.c_str(), time);
+        }
+        else
+        {
+            printf("%s is not reachable\n", ip.c_str());
         }
     }
 

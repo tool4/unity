@@ -27,8 +27,8 @@ inline uint16_t CheckSum(const uint16_t *buffer, const int size)
 // IP header
 typedef struct S_IPHeader
 {
-    uint32_t h_len : 4;    // Header length
-    uint32_t version : 4;    // IP Version
+    uint32_t h_len : 4;         // Header length
+    uint32_t version : 4;       // IP Version
     uint8_t  tos;               // Type of service
     uint16_t total_len;         // Total length of the packet
     uint16_t ident;             // Unique identifier

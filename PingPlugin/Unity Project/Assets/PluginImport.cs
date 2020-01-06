@@ -4,26 +4,23 @@ using UnityEngine;
 
 public class PluginImport : MonoBehaviour
 {
-    // TODO: update this!
-  
     //Lets make our calls from the Plugin
-    [DllImport("ASimplePlugin", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int PrintANumber();
+    [DllImport("PingPlugin", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int PingSync(string ip_addr);
 
-    [DllImport("ASimplePlugin", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr PrintHello();
+    [DllImport("PingPlugin", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int PingAsync(string ip_addr);
 
-    [DllImport("ASimplePlugin", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int AddTwoIntegers(int i1, int i2);
+    [DllImport("PingPlugin", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int PingIsDone(int ip_handle);
 
-    [DllImport("ASimplePlugin", CallingConvention = CallingConvention.Cdecl)]
-    private static extern float AddTwoFloats(float f1, float f2);
+    [DllImport("PingPlugin", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int PingTime(int ip_handle);
 
     void Start()
     {
-        Debug.Log(PrintANumber());
-        Debug.Log(Marshal.PtrToStringAnsi(PrintHello()));
-        Debug.Log(AddTwoIntegers(2, 2));
-        Debug.Log(AddTwoFloats(2.5F, 4F));
+        Debug.Log(PingSync("127.0.0.1"));
+        Debug.Log(PingSync("192.168.0.1"));
+        Debug.Log(PingSync("www.unity.com"));
     }
 }

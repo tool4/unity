@@ -64,7 +64,7 @@ inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
                 WriteConsoleA(console, str, len, &bytes_written, NULL);
             }
 #else
-	    vsnprintf(str, len, fmt, args);
+            vsnprintf(str, len, fmt, args);
             printf("%s", str);
 #endif
             va_end(args);

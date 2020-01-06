@@ -60,7 +60,7 @@
       <AdditionalDependencies>../../../PingPlugin/PluginSource/Windows/build/bin/Win32/Debug/PingPlugin.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\..\..\PingPlugin\PluginSource\Windows\build\bin\Win32\Debug\PingPlugin.dll</Command>
+      <Command>copy ..\..\..\PingPlugin\PluginSource\Windows\build\bin\Win32\Debug\PingPlugin.dll ..\Debug &amp;&amp; echo PingPlugin.dll copied to ..\Debug</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -81,7 +81,7 @@
       <AdditionalDependencies>../../../PingPlugin/PluginSource/Windows/build/bin/Win32/Release/PingPlugin.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\..\..\PingPlugin\PluginSource\Windows\build\bin\Win32\Debug\PingPlugin.dll</Command>
+      <Command>copy ..\..\..\PingPlugin\PluginSource\Windows\build\bin\Win32\Release\PingPlugin.dll ..\Release &amp;&amp; echo PingPlugin.dll copied to ..\Release</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

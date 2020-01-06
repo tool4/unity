@@ -25,8 +25,6 @@ namespace pinger
 static CPinger* g_s_instance;
 
 CPinger::CPinger() :
-    packets_received_(0),
-    packets_sent_(0),
     worker_thread_([=] { PingWorkerThread(); }),
     raw_socket_(INVALID_SOCKET),
     timeout_(1000),
@@ -62,10 +60,29 @@ CPinger* CPinger::GetInstance()
     return g_s_instance;
 }
 
+void CPinger::RemoveInstance()
+{
+    if (g_s_instance)
+    {
+        delete g_s_instance;
+        g_s_instance = NULL;
+    }
+}
+
 int CPinger::PingAsync(unsigned int const ip_key)
 {
-    queue_.push(ip_key);
-    status_map_[ip_key] = SPingStatus();
+    TRY{
+        queue_.push(ip_key);
+        status_map_[ip_key] = SPingStatus();
+    }
+    CATCH(std::runtime_error &e) {
+        const char *exception_str = EXCEPTION_STR;
+        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
+            __FUNCTION__, exception_str);
+    }
+    CATCH(...) {
+        LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
+    }
     return ip_key;
 }
 
@@ -79,13 +96,26 @@ bool CPinger::IsDone(unsigned int const ip_key) const
     return true;
 }
 
+// Successful calls to this function erase the stored status
+// data (another call with the same ip_key is going to fail).
+// This is not best choice as with improper usage may lead to
+// leaking the memory, used here only temporarily.
+// TODO: add a thread responsible for cleaning old stored data,
+// it should remove data unused for given period of time.
 int CPinger::Time(unsigned int const ip_key)
 {
     auto it = status_map_.find(ip_key);
     if (it != status_map_.end())
     {
-        unsigned int time = it->second.time;
-        status_map_.erase(it);
+        int time = -1;
+        if (it->second.done)
+        {
+            if (it->second.status == PING_SUCCESSFUL)
+            {
+                time = it->second.time;
+            }
+            status_map_.erase(it);
+        }
         return time;
     }
     return -1;
@@ -101,6 +131,52 @@ PING_STATUS CPinger::Status(unsigned int const ip_key) const
     return INVALID_HANDLE;
 }
 
+int CPinger::UpdateTimeouts()
+{
+    int ret = 0;
+
+#ifdef WIN32
+    unsigned int timeout = timeout_;
+#else
+    struct timeval timeout =
+    {
+        static_cast<long int>(timeout_) / 1000,
+        (static_cast<long int>(timeout_) % 1000) * 1000
+    };
+#endif
+
+    if (raw_socket_)
+    {
+        // Set the recv timeout value
+        ret = setsockopt(
+            raw_socket_,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            reinterpret_cast<char*>(&timeout),
+            sizeof(timeout));
+
+        if (ret == SOCKET_ERROR) {
+            LOG(LL_NORMAL, "setsockopt(SO_RCVTIMEO) failed: %d\n", GetLastError());
+            return -1;
+        }
+
+        // Set the send timeout value
+        ret = setsockopt(
+            raw_socket_,
+            SOL_SOCKET,
+            SO_SNDTIMEO,
+            reinterpret_cast<char*>(&timeout),
+            sizeof(timeout));
+
+        if (ret == SOCKET_ERROR) {
+            LOG(LL_NORMAL, "setsockopt(SO_SNDTIMEO) failed: %d\n", GetLastError());
+            return -1;
+        }
+    }
+
+    return ret;
+}
+
 int CPinger::Initialize()
 {
 #ifdef WIN32
@@ -110,52 +186,20 @@ int CPinger::Initialize()
         LOG(LL_NORMAL, "WSAStartup() failed: %d\n", GetLastError());
         return -1;
     }
-    unsigned int timeout = timeout_;
-#else
-    struct timeval timeout =
-    {
-        static_cast<long int>(timeout_) / 1000,
-	(static_cast<long int>(timeout_) % 1000) * 1000
-    };
 #endif
+    memset(&dest_, 0, sizeof(dest_));
+
     raw_socket_ = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (raw_socket_ == INVALID_SOCKET) {
-        LOG(LL_NORMAL, "WSASocket() failed: %d\n", GetLastError());
+        LOG(LL_NORMAL, "Raw socket creation failed (insufficient access rights?)\n");
+        LOG(LL_NORMAL, "Error code returned: %d \n", GetLastError());
         // This may fail if process has no super user rights
-        // Fallback to TCP connection to workaround this?
+        // TODO: Fallback to TCP connection to workaround this?
         return -1;
     }
 
-    // Set the recv timeout value
-    int ret = setsockopt(
-	          raw_socket_,
-	          SOL_SOCKET,
-                  SO_RCVTIMEO,
-                  reinterpret_cast<char*>(&timeout),
-		  sizeof(timeout));
-
-    if (ret == SOCKET_ERROR) {
-        LOG(LL_NORMAL, "setsockopt(SO_RCVTIMEO) failed: %d\n", GetLastError());
-        return -1;
-    }
-
-    // Set the send timeout value
-    ret = setsockopt(
-              raw_socket_,
-              SOL_SOCKET,
-              SO_SNDTIMEO,
-              reinterpret_cast<char*>(&timeout),
-              sizeof(timeout));
-
-    if (ret == SOCKET_ERROR) {
-        LOG(LL_NORMAL, "setsockopt(SO_SNDTIMEO) failed: %d\n", GetLastError());
-        return -1;
-    }
-
-    memset(&dest_, 0, sizeof(dest_));
-
-    return 0;
+    return UpdateTimeouts();;
 }
 
 int CPinger::SendPing(
@@ -166,7 +210,6 @@ int CPinger::SendPing(
     int ret_value = WriteRawSocket(seq_no, ip_key);
     if (ret_value != SOCKET_ERROR)
     {
-        ++packets_sent_;
         ret_value = ReadRawSocket(time);
     }
     return ret_value;
@@ -174,7 +217,7 @@ int CPinger::SendPing(
 
 int CPinger::PingWorkerThread()
 {
-    TRY {
+    TRY{
         LOG(LL_NORMAL, "%s has started\n", __FUNCTION__);
         while (!terminate_)
         {
@@ -233,6 +276,7 @@ int CPinger::SetupDestAddr(char const * const addr_str)
         else
         {
             LOG(LL_NORMAL, "gethostbyname() failed: %d\n", GetLastError());
+            // 0.0.0.0 is an invalid ip address, 0 is fine for error signaling
             return 0;
         }
     }
@@ -251,8 +295,8 @@ int CPinger::WriteRawSocket(
 {
     ICMPPacket icmp_packet = ICMPPacket(
         GetTickCount(),
-        (uint16_t)GetCurrentProcessId(),
-        seq_no,
+        static_cast<uint16_t>(GetCurrentProcessId()),
+        static_cast<uint16_t>(seq_no),
         data);
 
     LOG(LL_NORMAL, "sending: %d bytes\n", sizeof(ICMPPacket));
@@ -267,13 +311,13 @@ int CPinger::WriteRawSocket(
 
     if (ret == SOCKET_ERROR) {
         LOG(LL_NORMAL,
-	    "socket: %08X, dest: %s - sendto() failed, error code: %d\n",
+            "socket: %08X, dest: %s - sendto() failed, error code: %d\n",
             raw_socket_, inet_ntoa(dest_.sin_addr), GetLastError());
     }
     else if (ret < static_cast<int>(sizeof(ICMPPacket))) {
         LOG(LL_NORMAL,
-	    "%s Wrote %d/%d bytes\n",
-	    inet_ntoa(dest_.sin_addr), ret, sizeof(ICMPPacket));
+            "%s Wrote %d/%d bytes\n",
+            inet_ntoa(dest_.sin_addr), ret, sizeof(ICMPPacket));
     }
     return ret;
 }
@@ -301,16 +345,15 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
         }
 #endif
         LOG(LL_NORMAL, "recvfrom %s - SOCKET_ERROR, error code: %d\n",
-	    inet_ntoa(from.sin_addr), GetLastError());
-        return DEST_UNREACHABLE;
+            inet_ntoa(from.sin_addr), GetLastError());
+            return DEST_UNREACHABLE;
     }
 
     uint32_t tick = GetTickCount();
-    ++packets_received_;
     uint32_t data = 0xDEADBEEF;
     IPHeader *iphdr = reinterpret_cast<IPHeader *>(buf);
     ICMPPacket *icmp_pkt = reinterpret_cast<ICMPPacket *>(
-	buf + iphdr->h_len * sizeof(uint32_t));
+    buf + iphdr->h_len * sizeof(uint32_t));
 
     if (icmp_pkt->header.i_type == ICMP_ECHOREPLY) {
         if (icmp_pkt->header.i_id != (uint16_t)GetCurrentProcessId()) {
@@ -319,8 +362,8 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
         }
         else {
             time = tick - icmp_pkt->timestamp;
-            LOG(LL_NORMAL, "received %3d bytes from %12s:"
-		" icmp_seq = %d. time: %d ms\n",
+            LOG(LL_NORMAL,
+                "received %3d bytes from %12s: icmp_seq = %d. time: %d ms\n",
                 ret_value,
                 inet_ntoa(from.sin_addr),
                 icmp_pkt->header.i_seq,
@@ -342,12 +385,12 @@ PING_STATUS CPinger::ReadRawSocket(unsigned int &time)
             return DEST_UNKNOWN;
         }
     }
-    return INVALID_STATUS;
 }
 
 void CPinger::SetTimeout(unsigned int const timeout)
 {
     timeout_ = timeout;
+    UpdateTimeouts();
 }
 
 void CPinger::SetNumIterations(unsigned int const num_iterations)
