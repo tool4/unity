@@ -34,13 +34,13 @@ public class PluginImport : MonoBehaviour
         SetNumIterations(1);
         Debug.Log("pinging 127.0.0.1");
         Debug.Log(PingSync("127.0.0.1"));
-        Debug.Log("pinging 192.168.0.1");
-        Debug.Log(PingSync("192.168.0.1"));
+        Debug.Log("pinging 111.112.113.114 (should fail)");
+        Debug.Log(PingSync("111.112.113.114"));
         Debug.Log("pinging www.unity.com");
         Debug.Log(PingSync("www.unity.com"));
 
         Debug.Log("pinging www.unity.com asynchronously:");
-        int handle = PingAync("www.unity.com");
+        int handle = PingAsync("www.unity.com");
         while (!PingIsDone(handle))
         {
             Sleep(1);
