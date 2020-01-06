@@ -40,20 +40,24 @@ CPinger::~CPinger()
 
 CPinger* CPinger::GetInstance()
 {
-    TRY{
+    TRY
+    {
         // Singleton object - allow only one instance of this class to be
         // generated (since we want to reuse already opened socket).
-        if (!g_s_instance) {
+        if (!g_s_instance)
+        {
             g_s_instance = new CPinger();
             g_s_instance->Initialize();
         }
     }
-    CATCH(std::runtime_error &e) {
-            const char *exception_str = EXCEPTION_STR;
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
-                __FUNCTION__, exception_str);
+    CATCH(std::runtime_error &e)
+    {
+        const char *exception_str = EXCEPTION_STR;
+        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
+            __FUNCTION__, exception_str);
     }
-    CATCH(...) {
+    CATCH(...)
+    {
         LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
 
@@ -71,16 +75,19 @@ void CPinger::RemoveInstance()
 
 int CPinger::PingAsync(unsigned int const ip_key)
 {
-    TRY{
+    TRY
+    {
         queue_.push(ip_key);
         status_map_[ip_key] = SPingStatus();
     }
-    CATCH(std::runtime_error &e) {
+    CATCH(std::runtime_error &e)
+    {
         const char *exception_str = EXCEPTION_STR;
         LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
             __FUNCTION__, exception_str);
     }
-    CATCH(...) {
+    CATCH(...)
+    {
         LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
     return ip_key;
@@ -217,7 +224,8 @@ int CPinger::SendPing(
 
 int CPinger::PingWorkerThread()
 {
-    TRY{
+    TRY
+    {
         LOG(LL_NORMAL, "%s has started\n", __FUNCTION__);
         while (!terminate_)
         {
@@ -248,12 +256,14 @@ int CPinger::PingWorkerThread()
             std::this_thread::yield();
         }
     }
-    CATCH(std::runtime_error &e) {
-            const char *exception_str = EXCEPTION_STR;
-            LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
-                __FUNCTION__, exception_str);
+    CATCH(std::runtime_error &e)
+    {
+        const char *exception_str = EXCEPTION_STR;
+        LOG(LL_NORMAL, "%s - Exception caught!:\n%s\n",
+            __FUNCTION__, exception_str);
     }
-    CATCH(...) {
+    CATCH(...)
+    {
         LOG(LL_NORMAL, "%s: Unknown exception caught!\n", __FUNCTION__);
     }
     return 0;

@@ -32,7 +32,9 @@ enum LOG_LEVEL
     LL_VERBOSE,
 };
 
-//TODO; make it non inline?
+// TODO: make it non inline to minimize the binary size (add Debug.cpp file)
+// TODO: move log level check to the LOG macro (to avoid unnecessary calls)
+// TODO: write to file instead of console?
 inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
 {
     if (ll <= g_log_level)
@@ -73,19 +75,19 @@ inline void debug_printf(LOG_LEVEL ll, const char *fmt, ...)
     }
 }
 
-
 // Are c++ exceptions always allowed in unity plugins?
-// May not need this if yes.
-// Left here to demonstrate how that can be handled. However
-// this may be not sufficient, as if exceptions are not supported
-// e.g. on android, then we still can run into problems, as the
-// code within plugin assumes that exception can be thrown (e.g.
-// in cale of out of memory error). So, if we need to support
+// May not need these macros at all, if yes.
+// Left here to demonstrate how we could support both: platforms with and
+// without exceptions support.
+// However, this may be not sufficient: if exceptions are not supported
+// on some platform (e.g. on android) then we still can run into problems,
+// as the code within plugin assumes that exception can be thrown (e.g.
+// in case of out of memory error). So, if we need to support
 // platform without exceptions some parts of the plugin may need
 // to be rewritten - at least all allocations shall be examined and
 // proper error checking added.
-// So far, this plugin is for windows and linux and they both have 
-// exceptions support, so we should be fine.
+// So far this plugin is for windows and linux only and they both
+// support exceptions, we should be fine there.
 #define EXCEPTIONS_ALLOWED 1
 #if EXCEPTIONS_ALLOWED 
 #define TRY             try
